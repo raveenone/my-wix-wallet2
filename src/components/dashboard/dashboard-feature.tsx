@@ -71,13 +71,13 @@ export function DashboardFeature() {
   }, [publicKey, connection]);
 
   return (
-    <div className="hero min-h-screen bg-base-200">
+    <div className="hero flex flex-col items-center justify-center w-full bg-base-200">
       <div className="hero-content text-center">
         <div className="max-w-md">
           
-          <h1 className="text-5xl font-bold">My Token Checker</h1>
+          <h1 className="text-5xl font-bold">Satoshi Strike Force</h1>
           <p className="py-6">
-            Connect your wallet to see how many tokens you hold.
+            Token on solana
           </p>
           
           <div className="flex flex-col items-center gap-4">
@@ -86,7 +86,7 @@ export function DashboardFeature() {
 
             {/* Display Balance Logic */}
             {publicKey && (
-              <div className="mt-6 p-6 border border-primary rounded-xl bg-base-100 shadow-xl">
+              <div className="mt-6 p-4 max-w-xs border border-primary rounded-xl bg-base-100 shadow-xl">
                 <h2 className="text-xl font-bold mb-2 text-primary">Your Balance</h2>
                 
                 {isLoading ? (
@@ -94,7 +94,7 @@ export function DashboardFeature() {
                 ) : (
                   <div className="stat-value text-4xl">
                     {tokenBalance !== null ? tokenBalance : 0} 
-                    <span className="text-sm ml-2 opacity-50">TOKENS</span>
+                    <span className="text-sm ml-2 opacity-50">SSF TOKENS</span>
                   </div>
                 )}
               </div>

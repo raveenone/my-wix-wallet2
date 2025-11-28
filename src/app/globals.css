@@ -130,3 +130,14 @@
   @apply !border !bg-background !shadow-xs hover:!bg-accent !text-accent-foreground hover:!text-accent-foreground dark:!bg-input/30 !border-input/10 dark:!border-input dark:hover:!bg-input/50;
   @apply !px-2 !py-[6px] !rounded-md !text-sm !font-semibold !shadow-sm !transition-all;
 }
+
+/* Force hide the template navbar and footer to prevent scrollbars in the iframe
+header, footer {
+  display: none !important;
+}*/
+
+/* Ensure the main background doesn't force height */
+body, html {
+  overflow: hidden; /* Optional: forces no scrollbar on the body itself */
+  height: auto;
+}
