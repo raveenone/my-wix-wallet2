@@ -25,7 +25,8 @@ export enum ClusterNetwork {
 export const defaultClusters: SolanaCluster[] = [
   {
     name: 'mainnet-beta',
-    endpoint: clusterApiUrl('mainnet-beta'),
+    //endpoint: clusterApiUrl('mainnet-beta'),
+    endpoint: process.env.NEXT_PUBLIC_SOLANA_RPC || clusterApiUrl('mainnet-beta'),
     network: ClusterNetwork.Mainnet,
   },
   {
