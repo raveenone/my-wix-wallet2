@@ -5,30 +5,43 @@ import { useWalletModal } from '@solana/wallet-adapter-react-ui';
 import { useEffect, useState } from 'react';
 
 export default function ConnectButtonPage() {
-  const { connected, disconnect } = useWallet();
+  const { connected, publicKey, disconnect } = useWallet();
   const { setVisible } = useWalletModal();
   const [mounted, setMounted] = useState(false);
 
+  // 1. SEND MESSAGE TO WIX WHEN STATUS CHANGES
+  useEffect(() => {
+    if (mounted) {
+      const status = connected ? "Connected" : "Disconnected";
+      const walletAddress = publicKey ? publicKey.toString() : null;
+
+      // This code sends the data "up" to your Wix website
+      window.parent.postMessage({
+        type: 'WALLET_STATUS_CHANGE',
+        isConnected: connected,
+        address: walletAddress
+      }, "*");
+    }
+  }, [connected, publicKey, mounted]);
+
   useEffect(() => {
     setMounted(true);
-    // Force the body to be transparent so the iframe blends in
+    // Force transparency & hide navbars
     document.body.style.background = 'transparent';
     document.documentElement.style.background = 'transparent';
   }, []);
 
   if (!mounted) return null;
 
+  // Button Logic & Styling
   const handleClick = () => {
     if (connected) {
-      if (confirm("Disconnect wallet?")) {
-        disconnect();
-      }
+      if (confirm("Disconnect wallet?")) disconnect();
     } else {
       setVisible(true);
     }
   };
 
-  // Button Styling
   const buttonStyle = "px-6 py-2 rounded-full font-bold text-sm shadow-lg transition-all transform hover:scale-105 " + 
     (connected 
       ? "bg-[#14F195] text-black hover:bg-[#0fd180]" 
@@ -37,37 +50,13 @@ export default function ConnectButtonPage() {
 
   return (
     <div className="flex items-center justify-center w-full h-screen bg-transparent">
-      
-      {/* The Button */}
       <button onClick={handleClick} className={buttonStyle}>
         {connected ? "Connected" : "Connect Wallet"}
       </button>
-
-      {/* 
-         THE "NUCLEAR" CSS FIX 
-         This style tag hides the layout elements specifically for this page.
-      */}
       <style jsx global>{`
-        /* Hide the specific class used by the template (DaisyUI) */
-        .navbar {
-          display: none !important;
-        }
-        
-        /* Hide standard HTML tags just in case */
-        header, footer {
-          display: none !important;
-        }
-
-        /* Hide the top-level layout wrapper padding/margins */
-        div[class*="flex-col"] > div[class*="navbar"] {
-          display: none !important;
-        }
-
-        /* Ensure the background is totally clear */
-        body, html, #__next, main {
-          background-color: transparent !important;
-          overflow: hidden !important; /* Remove scrollbars */
-        }
+        .navbar, header, footer { display: none !important; }
+        div[class*="flex-col"] > div[class*="navbar"] { display: none !important; }
+        body, html, #__next, main { background-color: transparent !important; overflow: hidden !important; }
       `}</style>
     </div>
   );
