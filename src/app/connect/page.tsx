@@ -11,39 +11,13 @@ export default function ConnectButtonPage() {
 
   useEffect(() => {
     setMounted(true);
-    
-    // ---------------------------------------------------------
-    // 1. MAKE BACKGROUND TRANSPARENT
-    // ---------------------------------------------------------
-    document.documentElement.style.background = 'transparent';
+    // Force the body to be transparent so the iframe blends in
     document.body.style.background = 'transparent';
-
-    // ---------------------------------------------------------
-    // 2. HIDE THE HEADER / NAVBAR
-    // ---------------------------------------------------------
-    // The template usually gives the header a class of 'navbar'
-    const navbar = document.querySelector('.navbar');
-    if (navbar) {
-      (navbar as HTMLElement).style.display = 'none';
-    }
-    
-    // Also hide the footer just in case
-    const footer = document.querySelector('footer');
-    if (footer) {
-      (footer as HTMLElement).style.display = 'none';
-    }
-
-    return () => {
-      // Optional cleanup if you navigated away (unlikely in iframe)
-      document.documentElement.style.background = '';
-      document.body.style.background = '';
-      if (navbar) (navbar as HTMLElement).style.display = '';
-    };
+    document.documentElement.style.background = 'transparent';
   }, []);
 
   if (!mounted) return null;
 
-  // Button Logic
   const handleClick = () => {
     if (connected) {
       if (confirm("Disconnect wallet?")) {
@@ -54,7 +28,7 @@ export default function ConnectButtonPage() {
     }
   };
 
-  // Button Styling (Matches the black/green theme)
+  // Button Styling
   const buttonStyle = "px-6 py-2 rounded-full font-bold text-sm shadow-lg transition-all transform hover:scale-105 " + 
     (connected 
       ? "bg-[#14F195] text-black hover:bg-[#0fd180]" 
@@ -62,10 +36,39 @@ export default function ConnectButtonPage() {
     );
 
   return (
-    <div className="flex items-center justify-center h-screen w-screen bg-transparent overflow-hidden">
+    <div className="flex items-center justify-center w-full h-screen bg-transparent">
+      
+      {/* The Button */}
       <button onClick={handleClick} className={buttonStyle}>
         {connected ? "Connected" : "Connect Wallet"}
       </button>
+
+      {/* 
+         THE "NUCLEAR" CSS FIX 
+         This style tag hides the layout elements specifically for this page.
+      */}
+      <style jsx global>{`
+        /* Hide the specific class used by the template (DaisyUI) */
+        .navbar {
+          display: none !important;
+        }
+        
+        /* Hide standard HTML tags just in case */
+        header, footer {
+          display: none !important;
+        }
+
+        /* Hide the top-level layout wrapper padding/margins */
+        div[class*="flex-col"] > div[class*="navbar"] {
+          display: none !important;
+        }
+
+        /* Ensure the background is totally clear */
+        body, html, #__next, main {
+          background-color: transparent !important;
+          overflow: hidden !important; /* Remove scrollbars */
+        }
+      `}</style>
     </div>
   );
 }
