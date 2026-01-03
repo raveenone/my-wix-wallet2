@@ -9,47 +9,57 @@ export default function ConnectButtonPage() {
   const { setVisible } = useWalletModal();
   const [mounted, setMounted] = useState(false);
   
-  // Safety Lock: Ignore "Disconnected" state for the first 2 seconds
-  const canReportDisconnect = useRef(false);
+  // Track previous state to detect CHANGES (True->False or False->True)
+  const prevConnected = useRef(connected);
+  
+  // Safety lock: Don't send messages during the first 1 second (Auto-connect window)
+  const isReadyToSend = useRef(false);
 
   useEffect(() => {
     setMounted(true);
+    // Force transparency
     document.body.style.background = 'transparent';
     document.documentElement.style.background = 'transparent';
 
-    // 1. START SAFETY TIMER (2 Seconds)
-    // We will NOT report a "Disconnected" status until this timer finishes.
-    // This prevents the app from wiping the Wix session while it is still loading/auto-connecting.
+    // 1. START SAFETY TIMER
+    // We ignore any state changes for the first 800ms to allow Auto-Connect to finish quietly.
     const timer = setTimeout(() => {
-      canReportDisconnect.current = true;
-    }, 2000);
+      isReadyToSend.current = true;
+      
+      // OPTIONAL: If we are already connected after the timer, 
+      // we can send a "Silent Sync" to update the header without closing.
+      // (Requires updating Wix code to handle 'SYNC_ONLY' if you wanted that, 
+      // but for now, we just keep the popup open so the user can interact).
+    }, 800);
 
     return () => clearTimeout(timer);
   }, []);
 
+  // 2. MONITOR STATUS CHANGES
   useEffect(() => {
     if (!mounted) return;
 
-    const walletAddress = publicKey ? publicKey.toString() : null;
-
-    if (connected) {
-      // A. IF CONNECTED: Always report immediately (Good news travels fast)
-      window.parent.postMessage({
-        type: 'WALLET_STATUS_CHANGE',
-        isConnected: true,
-        address: walletAddress
-      }, "*");
+    // Only proceed if the "Safety Lock" is released
+    if (isReadyToSend.current) {
       
-    } else {
-      // B. IF DISCONNECTED: Only report if the Safety Timer has finished
-      if (canReportDisconnect.current) {
+      // Check if status actually CHANGED
+      const hasChanged = prevConnected.current !== connected;
+
+      if (hasChanged) {
+        const walletAddress = publicKey ? publicKey.toString() : null;
+
+        // SEND MESSAGE
         window.parent.postMessage({
           type: 'WALLET_STATUS_CHANGE',
-          isConnected: false,
-          address: null
+          isConnected: connected,
+          address: walletAddress
         }, "*");
       }
     }
+
+    // Update reference for next render
+    prevConnected.current = connected;
+
   }, [connected, publicKey, mounted]);
 
   if (!mounted) return null;
@@ -78,7 +88,7 @@ export default function ConnectButtonPage() {
       <style jsx global>{`
         .navbar, header, footer { display: none !important; }
         div[class*="flex-col"] > div[class*="navbar"] { display: none !important; }
-        body, html, #__next, main { background-color: transparent !important; overflow: hidden !important;  }
+        body, html, #__next, main { background-color: transparent !important; overflow: hidden !important; }
       `}</style>
     </div>
   );
