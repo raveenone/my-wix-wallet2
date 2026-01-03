@@ -2,64 +2,42 @@
 
 import { useWallet } from '@solana/wallet-adapter-react';
 import { useWalletModal } from '@solana/wallet-adapter-react-ui';
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 
 export default function ConnectButtonPage() {
   const { connected, publicKey, disconnect } = useWallet();
   const { setVisible } = useWalletModal();
   const [mounted, setMounted] = useState(false);
-  
-  // Track previous state to detect CHANGES (True->False or False->True)
-  const prevConnected = useRef(connected);
-  
-  // Safety lock: Don't send messages during the first 1 second (Auto-connect window)
-  const isReadyToSend = useRef(false);
 
   useEffect(() => {
     setMounted(true);
-    // Force transparency
     document.body.style.background = 'transparent';
     document.documentElement.style.background = 'transparent';
-
-    // 1. START SAFETY TIMER
-    // We ignore any state changes for the first 800ms to allow Auto-Connect to finish quietly.
-    const timer = setTimeout(() => {
-      isReadyToSend.current = true;
-      
-      // OPTIONAL: If we are already connected after the timer, 
-      // we can send a "Silent Sync" to update the header without closing.
-      // (Requires updating Wix code to handle 'SYNC_ONLY' if you wanted that, 
-      // but for now, we just keep the popup open so the user can interact).
-    }, 800);
-
-    return () => clearTimeout(timer);
   }, []);
 
-  // 2. MONITOR STATUS CHANGES
+  // ---------------------------------------------------------
+  // THE ROBUST SYNC LOGIC
+  // ---------------------------------------------------------
   useEffect(() => {
     if (!mounted) return;
 
-    // Only proceed if the "Safety Lock" is released
-    if (isReadyToSend.current) {
+    // Give Auto-Connect a split second to initialize
+    const syncTimer = setTimeout(() => {
       
-      // Check if status actually CHANGED
-      const hasChanged = prevConnected.current !== connected;
+      const walletAddress = publicKey ? publicKey.toString() : null;
 
-      if (hasChanged) {
-        const walletAddress = publicKey ? publicKey.toString() : null;
+      // Always shout the current status to the parent (Wix)
+      // We don't care if it's the first run or the 100th run.
+      // The Iframe is the "Boss" of the connection state.
+      window.parent.postMessage({
+        type: 'WALLET_STATUS_CHANGE',
+        isConnected: connected,
+        address: walletAddress
+      }, "*");
 
-        // SEND MESSAGE
-        window.parent.postMessage({
-          type: 'WALLET_STATUS_CHANGE',
-          isConnected: connected,
-          address: walletAddress
-        }, "*");
-      }
-    }
+    }, 500); // 500ms delay to let AutoConnect finish
 
-    // Update reference for next render
-    prevConnected.current = connected;
-
+    return () => clearTimeout(syncTimer);
   }, [connected, publicKey, mounted]);
 
   if (!mounted) return null;
@@ -68,12 +46,19 @@ export default function ConnectButtonPage() {
     if (connected) {
       if (confirm("Disconnect wallet?")) {
         disconnect();
+        // Force an immediate update message on disconnect
+        window.parent.postMessage({
+           type: 'WALLET_STATUS_CHANGE',
+           isConnected: false,
+           address: null
+        }, "*");
       }
     } else {
       setVisible(true);
     }
   };
 
+  // Button Styling
   const buttonStyle = "px-6 py-2 rounded-full font-bold text-sm shadow-lg transition-all transform hover:scale-105 " + 
     (connected 
       ? "bg-[#14F195] text-black hover:bg-[#0fd180]" 
@@ -85,10 +70,14 @@ export default function ConnectButtonPage() {
       <button onClick={handleClick} className={buttonStyle}>
         {connected ? "Connected" : "Connect Wallet"}
       </button>
+      
+      {/* Ensure Modal is visible (Z-Index fix) */}
       <style jsx global>{`
         .navbar, header, footer { display: none !important; }
-        div[class*="flex-col"] > div[class*="navbar"] { display: none !important; }
-        body, html, #__next, main { background-color: transparent !important; overflow: hidden !important; }
+        body, html, #__next, main { background-color: transparent !important; }
+        
+        /* Fix for Wallet Modal Z-Index inside iframe */
+        .wallet-adapter-modal-wrapper { z-index: 9999 !important; }
       `}</style>
     </div>
   );
