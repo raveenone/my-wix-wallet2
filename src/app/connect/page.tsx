@@ -2,7 +2,7 @@
 
 import { useWallet } from '@solana/wallet-adapter-react';
 import { useWalletModal } from '@solana/wallet-adapter-react-ui';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 
 export default function ConnectButtonPage() {
   const { connected, publicKey, disconnect } = useWallet();
@@ -10,17 +10,25 @@ export default function ConnectButtonPage() {
   const [mounted, setMounted] = useState(false);
 
   // 1. SEND MESSAGE TO WIX WHEN STATUS CHANGES
+  const isFirstRun = useRef(true);
+
   useEffect(() => {
     if (mounted) {
-      const status = connected ? "Connected" : "Disconnected";
-      const walletAddress = publicKey ? publicKey.toString() : null;
+      // 1. STOP if this is the very first load
+      if (isFirstRun.current) {
+        isFirstRun.current = false;
+        return; 
+      }
 
-      // This code sends the data "up" to your Wix website
-      window.parent.postMessage({
-        type: 'WALLET_STATUS_CHANGE',
-        isConnected: connected,
-        address: walletAddress
-      }, "*");
+      // 2. Only send message if something actually happened
+      // (Optionally: You can limit this to ONLY send if connected === true)
+      if (connected) {
+         window.parent.postMessage({
+            type: 'WALLET_STATUS_CHANGE',
+            isConnected: connected,
+            address: publicKey ? publicKey.toString() : null
+         }, "*");
+      }
     }
   }, [connected, publicKey, mounted]);
 
