@@ -8,43 +8,67 @@ export default function ConnectButtonPage() {
   const { connected, publicKey, disconnect } = useWallet();
   const { setVisible } = useWalletModal();
   const [mounted, setMounted] = useState(false);
-
-  // 1. SEND MESSAGE TO WIX WHEN STATUS CHANGES
-  const isFirstRun = useRef(true);
-
-  useEffect(() => {
-    if (mounted) {
-      // 1. STOP if this is the very first load
-      if (isFirstRun.current) {
-        isFirstRun.current = false;
-        return; 
-      }
-
-      // 2. Only send message if something actually happened
-      // (Optionally: You can limit this to ONLY send if connected === true)
-      if (connected) {
-         window.parent.postMessage({
-            type: 'WALLET_STATUS_CHANGE',
-            isConnected: connected,
-            address: publicKey ? publicKey.toString() : null
-         }, "*");
-      }
-    }
-  }, [connected, publicKey, mounted]);
+  
+  // Track previous state to detect CHANGES (True->False or False->True)
+  const prevConnected = useRef(connected);
+  
+  // Safety lock: Don't send messages during the first 1 second (Auto-connect window)
+  const isReadyToSend = useRef(false);
 
   useEffect(() => {
     setMounted(true);
-    // Force transparency & hide navbars
+    // Force transparency
     document.body.style.background = 'transparent';
     document.documentElement.style.background = 'transparent';
+
+    // 1. START SAFETY TIMER
+    // We ignore any state changes for the first 800ms to allow Auto-Connect to finish quietly.
+    const timer = setTimeout(() => {
+      isReadyToSend.current = true;
+      
+      // OPTIONAL: If we are already connected after the timer, 
+      // we can send a "Silent Sync" to update the header without closing.
+      // (Requires updating Wix code to handle 'SYNC_ONLY' if you wanted that, 
+      // but for now, we just keep the popup open so the user can interact).
+    }, 800);
+
+    return () => clearTimeout(timer);
   }, []);
+
+  // 2. MONITOR STATUS CHANGES
+  useEffect(() => {
+    if (!mounted) return;
+
+    // Only proceed if the "Safety Lock" is released
+    if (isReadyToSend.current) {
+      
+      // Check if status actually CHANGED
+      const hasChanged = prevConnected.current !== connected;
+
+      if (hasChanged) {
+        const walletAddress = publicKey ? publicKey.toString() : null;
+
+        // SEND MESSAGE
+        window.parent.postMessage({
+          type: 'WALLET_STATUS_CHANGE',
+          isConnected: connected,
+          address: walletAddress
+        }, "*");
+      }
+    }
+
+    // Update reference for next render
+    prevConnected.current = connected;
+
+  }, [connected, publicKey, mounted]);
 
   if (!mounted) return null;
 
-  // Button Logic & Styling
   const handleClick = () => {
     if (connected) {
-      if (confirm("Disconnect wallet?")) disconnect();
+      if (confirm("Disconnect wallet?")) {
+        disconnect();
+      }
     } else {
       setVisible(true);
     }
