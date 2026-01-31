@@ -2,11 +2,17 @@
 
 import { useConnection, useWallet } from '@solana/wallet-adapter-react';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
-import { Transaction } from '@solana/web3.js';
-import { useState } from 'react';
+import { PublicKey, Transaction } from '@solana/web3.js';
+import { useState, useEffect } from 'react';
 
-const PRICE_PER_TOKEN = 0.25;
+// ---------------------------------------------------
+// CONFIGURATION
+// ---------------------------------------------------
+const PRICE_PER_TOKEN = 0.25; 
 const MIN_PURCHASE_USD = 1.00;
+
+const USDC_MINT_ADDRESS = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+const USDT_MINT_ADDRESS = "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB";
 
 export default function PresaleWidget() {
   const { connection } = useConnection();
@@ -16,16 +22,64 @@ export default function PresaleWidget() {
   const [tokenType, setTokenType] = useState<'USDC' | 'USDT'>('USDC');
   const [status, setStatus] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  
+  // Track User's Balance
+  const [userBalance, setUserBalance] = useState<number>(0);
+  const [checkingBalance, setCheckingBalance] = useState(false);
 
   const ssfAmount = parseFloat(usdAmount || "0") / PRICE_PER_TOKEN;
 
+  // ---------------------------------------------------
+  // 1. CHECK USER BALANCE
+  // ---------------------------------------------------
+  useEffect(() => {
+    async function checkBalance() {
+      if (!publicKey) return;
+      setCheckingBalance(true);
+      
+      try {
+        const mint = new PublicKey(tokenType === 'USDC' ? USDC_MINT_ADDRESS : USDT_MINT_ADDRESS);
+        
+        // Fetch all token accounts for this mint
+        const response = await connection.getParsedTokenAccountsByOwner(publicKey, { mint });
+        
+        if (response.value.length > 0) {
+          // Sum up balance (in case they have multiple accounts)
+          const total = response.value.reduce((acc, account) => {
+            return acc + (account.account.data.parsed.info.tokenAmount.uiAmount || 0);
+          }, 0);
+          setUserBalance(total);
+        } else {
+          setUserBalance(0);
+        }
+      } catch (e) {
+        console.error("Error fetching balance:", e);
+        setUserBalance(0);
+      } finally {
+        setCheckingBalance(false);
+      }
+    }
+
+    checkBalance();
+  }, [publicKey, tokenType, connection]);
+
+  // ---------------------------------------------------
+  // 2. HANDLE BUY
+  // ---------------------------------------------------
   const handleBuy = async () => {
     if (!publicKey) return;
+    
+    // Safety Check: Balance
+    if (userBalance < parseFloat(usdAmount)) {
+        alert(`Insufficient funds! You only have ${userBalance.toFixed(2)} ${tokenType}.`);
+        return;
+    }
+
     setIsLoading(true);
     setStatus("Generating transaction...");
 
     try {
-      // 1. Call your API to create the swap transaction
+      // Call API
       const response = await fetch('/api/create-transaction', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -39,68 +93,146 @@ export default function PresaleWidget() {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Failed to create transaction");
 
-      // 2. Deserialize the transaction received from server
+      // Deserialize
       const transactionBuffer = Buffer.from(data.transaction, 'base64');
       const transaction = Transaction.from(transactionBuffer);
 
-      // 3. User Signs and Sends
-      setStatus("Please approve the swap in your wallet...");
+      // Sign and Send
+      setStatus(`Please approve the ${tokenType} transfer in your wallet...`);
+      
       const signature = await sendTransaction(transaction, connection);
       
       setStatus("Confirming transaction...");
       await connection.confirmTransaction(signature, 'confirmed');
 
-      setStatus("Purchase Successful! Tokens sent to your wallet.");
+      setStatus("Purchase Successful!");
       alert(`Success! You received ${ssfAmount} SSF tokens.`);
+      
+      // Refresh balance after purchase
+      window.location.reload(); 
 
     } catch (error: any) {
       console.error(error);
-      setStatus("Error: " + error.message);
+      // Handle User Rejecting vs Actual Error
+      if (error.message?.includes("User rejected")) {
+        setStatus("Transaction cancelled.");
+      } else {
+        setStatus("Error: " + error.message);
+      }
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <div className="w-full max-w-md mx-auto p-6 bg-base-200 rounded-2xl border border-gray-700 shadow-xl">
-      <h2 className="text-2xl font-bold text-center mb-6 text-primary">Buy SSF Tokens</h2>
+    <div className="w-full max-w-md mx-auto p-6 bg-[#0f0f0f] text-white rounded-3xl border border-gray-800 shadow-2xl">
+      <h2 className="text-3xl font-bold text-center mb-8 text-white">Buy SSF Tokens</h2>
 
-      {/* Payment Selection */}
-      <div className="flex gap-4 justify-center mb-6">
-        <button onClick={() => setTokenType('USDC')} className={`btn ${tokenType === 'USDC' ? 'btn-primary' : 'btn-outline'}`}>USDC</button>
-        <button onClick={() => setTokenType('USDT')} className={`btn ${tokenType === 'USDT' ? 'btn-success' : 'btn-outline'}`}>USDT</button>
+      {/* --------------------------------------------------- */}
+      {/* IMPROVED UI: PAYMENT SELECTOR */}
+      {/* --------------------------------------------------- */}
+      <div className="mb-6">
+        <label className="text-sm text-gray-400 font-semibold mb-2 block">I want to pay with:</label>
+        <div className="grid grid-cols-2 gap-4">
+            
+            {/* USDC OPTION */}
+            <div 
+                onClick={() => setTokenType('USDC')}
+                className={`cursor-pointer rounded-xl p-4 border-2 flex flex-col items-center transition-all ${
+                    tokenType === 'USDC' 
+                    ? 'border-blue-500 bg-blue-900/20 shadow-[0_0_15px_rgba(59,130,246,0.5)]' 
+                    : 'border-gray-700 bg-gray-800 hover:border-gray-500'
+                }`}
+            >
+                <div className="font-bold text-xl flex items-center gap-2">
+                    <span className="text-blue-400">USDC</span>
+                    {tokenType === 'USDC' && <span className="text-blue-500">✓</span>}
+                </div>
+                {/* Show Balance */}
+                <div className="text-xs mt-1 text-gray-400">
+                    {checkingBalance ? "..." : `Bal: ${userBalance.toLocaleString()}`}
+                </div>
+            </div>
+
+            {/* USDT OPTION */}
+            <div 
+                onClick={() => setTokenType('USDT')}
+                className={`cursor-pointer rounded-xl p-4 border-2 flex flex-col items-center transition-all ${
+                    tokenType === 'USDT' 
+                    ? 'border-green-500 bg-green-900/20 shadow-[0_0_15px_rgba(34,197,94,0.5)]' 
+                    : 'border-gray-700 bg-gray-800 hover:border-gray-500'
+                }`}
+            >
+                <div className="font-bold text-xl flex items-center gap-2">
+                    <span className="text-green-400">USDT</span>
+                    {tokenType === 'USDT' && <span className="text-green-500">✓</span>}
+                </div>
+                {/* Show Balance */}
+                <div className="text-xs mt-1 text-gray-400">
+                    {checkingBalance ? "..." : `Bal: ${userBalance.toLocaleString()}`}
+                </div>
+            </div>
+
+        </div>
       </div>
 
-      {/* Amount Input */}
-      <div className="form-control mb-6">
-        <label className="label">Amount (USD)</label>
-        <input 
-          type="number" 
-          value={usdAmount}
-          onChange={(e) => setUsdAmount(e.target.value)}
-          className="input input-bordered w-full text-lg"
-          min={MIN_PURCHASE_USD}
-        />
+      {/* AMOUNT INPUT */}
+      <div className="mb-6">
+        <label className="text-sm text-gray-400 font-semibold mb-2 block">Amount (USD)</label>
+        <div className="relative">
+          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-lg">$</span>
+          <input 
+            type="number" 
+            value={usdAmount}
+            onChange={(e) => setUsdAmount(e.target.value)}
+            className="w-full bg-gray-900 border border-gray-700 rounded-xl py-4 pl-10 pr-4 text-xl text-white focus:outline-none focus:border-white transition-colors"
+            min={MIN_PURCHASE_USD}
+          />
+        </div>
       </div>
 
-      {/* Info */}
-      <div className="bg-base-300 p-4 rounded-xl mb-6 text-center">
-        <p className="text-sm">You Get</p>
-        <p className="text-3xl font-bold text-[#14F195]">{ssfAmount.toLocaleString()} SSF</p>
+      {/* CONVERSION DISPLAY */}
+      <div className="bg-gray-800/50 p-6 rounded-2xl mb-8 text-center border border-gray-700">
+        <p className="text-sm text-gray-400 mb-1">You Will Receive</p>
+        <p className="text-4xl font-bold text-[#14F195] drop-shadow-md">{ssfAmount.toLocaleString()} SSF</p>
+        <p className="text-xs text-gray-500 mt-2">Exchange Rate: $0.25 USD = 1 SSF</p>
       </div>
 
-      {/* Button */}
-      {!publicKey ? <div className="flex justify-center"><WalletMultiButton /></div> : (
+      {/* ACTION BUTTON */}
+      {!publicKey ? (
+         <div className="flex justify-center wallet-adapter-button-trigger">
+            <WalletMultiButton />
+         </div>
+      ) : (
         <button 
           onClick={handleBuy} 
-          disabled={isLoading || parseFloat(usdAmount) < MIN_PURCHASE_USD}
-          className="btn btn-primary w-full font-bold text-lg"
+          disabled={isLoading || parseFloat(usdAmount) < MIN_PURCHASE_USD || userBalance < parseFloat(usdAmount)}
+          className={`w-full py-4 rounded-xl font-bold text-lg transition-all ${
+             userBalance < parseFloat(usdAmount)
+             ? "bg-gray-600 cursor-not-allowed opacity-50" // Insufficient Funds style
+             : "bg-white text-black hover:scale-[1.02] shadow-lg" // Active style
+          }`}
         >
-          {isLoading ? <span className="loading loading-spinner"></span> : "SWAP NOW"}
+          {isLoading ? (
+            <span className="loading loading-spinner">Processing...</span>
+          ) : (
+             userBalance < parseFloat(usdAmount) 
+             ? `Insufficient ${tokenType} Balance` 
+             : `SWAP ${usdAmount} ${tokenType}`
+          )}
         </button>
       )}
 
-      {status && <div className="mt-4 text-center text-sm">{status}</div>}
+      {/* STATUS MESSAGE */}
+      {status && (
+        <div className={`mt-6 text-center text-sm p-3 rounded-lg border ${
+            status.includes("Error") || status.includes("cancelled") 
+            ? "bg-red-900/30 border-red-800 text-red-300" 
+            : "bg-green-900/30 border-green-800 text-green-300"
+        }`}>
+          {status}
+        </div>
+      )}
     </div>
   );
 }
