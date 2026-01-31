@@ -21,7 +21,7 @@ export default function BuyPage() {
          origin-top  = Sticks to the top (doesn't float down)
          my-[-20px]  = Pulls it up slightly if needed
       */}
-      <div className="scale-[0.8] origin-top w-full flex justify-center">
+      <div className="scale-[0.86] origin-top w-full flex justify-center">
         <PresaleWidget />
       </div>
 
