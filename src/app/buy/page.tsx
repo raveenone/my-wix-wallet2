@@ -12,11 +12,25 @@ export default function BuyPage() {
   }, []);
 
   return (
-    <div className="flex items-center justify-center min-h-screen w-full bg-transparent py-10">
-      <PresaleWidget />
+    // Outer container: Removed 'min-h-screen' to prevent forcing huge height
+    <div className="flex items-start justify-center w-full bg-transparent overflow-visible">
+      
+      {/* 
+         THE SCALING WRAPPER 
+         scale-[0.8] = 80% size
+         origin-top  = Sticks to the top (doesn't float down)
+         my-[-20px]  = Pulls it up slightly if needed
+      */}
+      <div className="scale-[0.8] origin-top w-full flex justify-center">
+        <PresaleWidget />
+      </div>
+
       <style jsx global>{`
         .navbar, header, footer { display: none !important; }
-        body, html { background-color: transparent !important; }
+        body, html { 
+            background-color: transparent !important; 
+            overflow: visible !important; /* Allow content to fit */
+        }
       `}</style>
     </div>
   );
