@@ -2,28 +2,11 @@
 
 import { useConnection, useWallet } from '@solana/wallet-adapter-react';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
-import { PublicKey, Transaction } from '@solana/web3.js';
-import { 
-  getAssociatedTokenAddress, 
-  createTransferCheckedInstruction, 
-  getAccount, 
-  getMint 
-} from '@solana/spl-token';
-import { useState, useEffect } from 'react';
+import { Transaction } from '@solana/web3.js';
+import { useState } from 'react';
 
-// ------------------------------------------------------------------
-// CONFIGURATION
-// ------------------------------------------------------------------
-// 1. REPLACE THIS WITH YOUR WALLET ADDRESS (Where money goes)
-const TREASURY_WALLET = new PublicKey("7Q5o2vSjWAHLpWu9nY2togU3W3p5H3vKzG112GysQPEa");
-
-// 2. Token Mints (Mainnet Addresses)
-const USDC_MINT = new PublicKey("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
-const USDT_MINT = new PublicKey("Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB");
-
-// 3. Sale Config
-const PRICE_PER_TOKEN = 0.25; // $0.25
-const MIN_PURCHASE_USD = 1.00; // $1.00
+const PRICE_PER_TOKEN = 0.25;
+const MIN_PURCHASE_USD = 1.00;
 
 export default function PresaleWidget() {
   const { connection } = useConnection();
@@ -34,69 +17,45 @@ export default function PresaleWidget() {
   const [status, setStatus] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
-  // Calculate SSF Amount
   const ssfAmount = parseFloat(usdAmount || "0") / PRICE_PER_TOKEN;
 
   const handleBuy = async () => {
     if (!publicKey) return;
     setIsLoading(true);
-    setStatus("Preparing transaction...");
+    setStatus("Generating transaction...");
 
     try {
-      const amount = parseFloat(usdAmount);
-      if (isNaN(amount) || amount < MIN_PURCHASE_USD) {
-        throw new Error(`Minimum purchase is $${MIN_PURCHASE_USD}`);
-      }
+      // 1. Call your API to create the swap transaction
+      const response = await fetch('/api/create-transaction', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userAddress: publicKey.toString(),
+          amountUSD: usdAmount,
+          tokenType: tokenType
+        })
+      });
 
-      // 1. Determine which coin user is paying with
-      const mintToUse = tokenType === 'USDC' ? USDC_MINT : USDT_MINT;
-      const decimals = 6; // Both USDC and USDT use 6 decimals on Solana
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Failed to create transaction");
 
-      // 2. Find the User's Token Account
-      const userTokenAccount = await getAssociatedTokenAddress(mintToUse, publicKey);
-      
-      // 3. Find the Treasury's Token Account (Where we send money)
-      const treasuryTokenAccount = await getAssociatedTokenAddress(mintToUse, TREASURY_WALLET);
+      // 2. Deserialize the transaction received from server
+      const transactionBuffer = Buffer.from(data.transaction, 'base64');
+      const transaction = Transaction.from(transactionBuffer);
 
-      // Check if Treasury Account exists (If not, this transaction will fail, 
-      // so you must have held USDC/USDT in your treasury wallet at least once)
-      try {
-        await getAccount(connection, treasuryTokenAccount);
-      } catch (e) {
-        throw new Error("Treasury wallet is not initialized to receive " + tokenType);
-      }
-
-      // 4. Create Transfer Instruction
-      // Logic: Amount * 10^decimals (e.g. 100 USDC = 100 * 1,000,000)
-      const transferAmount = BigInt(Math.round(amount * Math.pow(10, decimals)));
-
-      const transaction = new Transaction().add(
-        createTransferCheckedInstruction(
-          userTokenAccount,     // From (User)
-          mintToUse,            // Mint (USDC/USDT)
-          treasuryTokenAccount, // To (Treasury)
-          publicKey,            // Payer (User)
-          transferAmount,       // Amount (in smallest unit)
-          decimals              // Decimals
-        )
-      );
-
-      // 5. Send Transaction
-      setStatus("Please sign the transaction in your wallet...");
+      // 3. User Signs and Sends
+      setStatus("Please approve the swap in your wallet...");
       const signature = await sendTransaction(transaction, connection);
       
       setStatus("Confirming transaction...");
       await connection.confirmTransaction(signature, 'confirmed');
 
-      setStatus(`Success! Transaction: ${signature.slice(0, 8)}...`);
-      alert("Purchase Successful! You have purchased " + ssfAmount + " SSF.");
+      setStatus("Purchase Successful! Tokens sent to your wallet.");
+      alert(`Success! You received ${ssfAmount} SSF tokens.`);
 
     } catch (error: any) {
       console.error(error);
-      let msg = error.message;
-      if (msg.includes("User rejected")) msg = "Transaction rejected by user.";
-      if (msg.includes("TokenAccountNotFoundError")) msg = `You do not have any ${tokenType} in your wallet.`;
-      setStatus("Error: " + msg);
+      setStatus("Error: " + error.message);
     } finally {
       setIsLoading(false);
     }
@@ -106,81 +65,42 @@ export default function PresaleWidget() {
     <div className="w-full max-w-md mx-auto p-6 bg-base-200 rounded-2xl border border-gray-700 shadow-xl">
       <h2 className="text-2xl font-bold text-center mb-6 text-primary">Buy SSF Tokens</h2>
 
-      {/* 1. Payment Method Selection */}
-      <div className="form-control mb-4">
-        <label className="label"><span className="label-text text-lg">Pay With:</span></label>
-        <div className="flex gap-4 justify-center">
-          <label className="cursor-pointer label gap-2 border border-gray-600 rounded-lg px-4 py-2 bg-base-100">
-            <input 
-              type="radio" 
-              name="token" 
-              className="radio radio-primary" 
-              checked={tokenType === 'USDC'} 
-              onChange={() => setTokenType('USDC')} 
-            />
-            <span className="font-bold">USDC</span>
-          </label>
-          <label className="cursor-pointer label gap-2 border border-gray-600 rounded-lg px-4 py-2 bg-base-100">
-            <input 
-              type="radio" 
-              name="token" 
-              className="radio radio-success" 
-              checked={tokenType === 'USDT'} 
-              onChange={() => setTokenType('USDT')} 
-            />
-            <span className="font-bold">USDT</span>
-          </label>
-        </div>
+      {/* Payment Selection */}
+      <div className="flex gap-4 justify-center mb-6">
+        <button onClick={() => setTokenType('USDC')} className={`btn ${tokenType === 'USDC' ? 'btn-primary' : 'btn-outline'}`}>USDC</button>
+        <button onClick={() => setTokenType('USDT')} className={`btn ${tokenType === 'USDT' ? 'btn-success' : 'btn-outline'}`}>USDT</button>
       </div>
 
-      {/* 2. Amount Input */}
-      <div className="form-control mb-4">
-        <label className="label">
-          <span className="label-text">Amount (USD)</span>
-        </label>
-        <div className="relative">
-          <span className="absolute left-4 top-3 text-gray-400">$</span>
-          <input 
-            type="number" 
-            value={usdAmount}
-            onChange={(e) => setUsdAmount(e.target.value)}
-            className="input input-bordered w-full pl-8 text-lg"
-            min={MIN_PURCHASE_USD}
-          />
-        </div>
-        <label className="label">
-          <span className="label-text-alt text-gray-400">Min purchase: ${MIN_PURCHASE_USD}</span>
-        </label>
+      {/* Amount Input */}
+      <div className="form-control mb-6">
+        <label className="label">Amount (USD)</label>
+        <input 
+          type="number" 
+          value={usdAmount}
+          onChange={(e) => setUsdAmount(e.target.value)}
+          className="input input-bordered w-full text-lg"
+          min={MIN_PURCHASE_USD}
+        />
       </div>
 
-      {/* 3. Conversion Display */}
+      {/* Info */}
       <div className="bg-base-300 p-4 rounded-xl mb-6 text-center">
-        <p className="text-sm opacity-70">You Will Receive</p>
+        <p className="text-sm">You Get</p>
         <p className="text-3xl font-bold text-[#14F195]">{ssfAmount.toLocaleString()} SSF</p>
-        <p className="text-xs opacity-50 mt-1">Rate: $0.25 / SSF</p>
       </div>
 
-      {/* 4. Action Button */}
-      <div className="flex flex-col gap-3">
-        {!publicKey ? (
-           <div className="flex justify-center"><WalletMultiButton /></div>
-        ) : (
-          <button 
-            onClick={handleBuy} 
-            disabled={isLoading || parseFloat(usdAmount) < MIN_PURCHASE_USD}
-            className="btn btn-primary btn-lg w-full font-bold text-lg shadow-lg shadow-primary/20"
-          >
-            {isLoading ? <span className="loading loading-spinner"></span> : "BUY TOKENS NOW"}
-          </button>
-        )}
-      </div>
-
-      {/* 5. Status Message */}
-      {status && (
-        <div className={`mt-4 text-center text-sm p-2 rounded ${status.includes("Error") ? "bg-red-900/50 text-red-200" : "bg-gray-800 text-green-400"}`}>
-          {status}
-        </div>
+      {/* Button */}
+      {!publicKey ? <div className="flex justify-center"><WalletMultiButton /></div> : (
+        <button 
+          onClick={handleBuy} 
+          disabled={isLoading || parseFloat(usdAmount) < MIN_PURCHASE_USD}
+          className="btn btn-primary w-full font-bold text-lg"
+        >
+          {isLoading ? <span className="loading loading-spinner"></span> : "SWAP NOW"}
+        </button>
       )}
+
+      {status && <div className="mt-4 text-center text-sm">{status}</div>}
     </div>
   );
 }
