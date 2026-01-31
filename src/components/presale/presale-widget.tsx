@@ -23,45 +23,59 @@ export default function PresaleWidget() {
   const [status, setStatus] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   
-  // Track User's Balance
-  const [userBalance, setUserBalance] = useState<number>(0);
+  // CHANGED: Store both balances separately
+  const [balances, setBalances] = useState({ usdc: 0, usdt: 0 });
   const [checkingBalance, setCheckingBalance] = useState(false);
 
   const ssfAmount = parseFloat(usdAmount || "0") / PRICE_PER_TOKEN;
+  
+  // Helper to get current selected balance for validation
+  const currentSelectedBalance = tokenType === 'USDC' ? balances.usdc : balances.usdt;
 
   // ---------------------------------------------------
-  // 1. CHECK USER BALANCE
+  // 1. CHECK USER BALANCES (BOTH)
   // ---------------------------------------------------
   useEffect(() => {
-    async function checkBalance() {
-      if (!publicKey) return;
+    async function checkBalances() {
+      if (!publicKey) {
+        setBalances({ usdc: 0, usdt: 0 });
+        return;
+      }
+      
       setCheckingBalance(true);
       
       try {
-        const mint = new PublicKey(tokenType === 'USDC' ? USDC_MINT_ADDRESS : USDT_MINT_ADDRESS);
-        
-        // Fetch all token accounts for this mint
-        const response = await connection.getParsedTokenAccountsByOwner(publicKey, { mint });
-        
-        if (response.value.length > 0) {
-          // Sum up balance (in case they have multiple accounts)
-          const total = response.value.reduce((acc, account) => {
-            return acc + (account.account.data.parsed.info.tokenAmount.uiAmount || 0);
-          }, 0);
-          setUserBalance(total);
-        } else {
-          setUserBalance(0);
-        }
+        // Helper function to fetch a single token balance
+        const fetchBalance = async (mintAddress: string) => {
+            const mint = new PublicKey(mintAddress);
+            const response = await connection.getParsedTokenAccountsByOwner(publicKey, { mint });
+            
+            if (response.value.length > 0) {
+                return response.value.reduce((acc, account) => {
+                    return acc + (account.account.data.parsed.info.tokenAmount.uiAmount || 0);
+                }, 0);
+            }
+            return 0;
+        };
+
+        // Fetch BOTH at the same time
+        const [usdcBal, usdtBal] = await Promise.all([
+            fetchBalance(USDC_MINT_ADDRESS),
+            fetchBalance(USDT_MINT_ADDRESS)
+        ]);
+
+        setBalances({ usdc: usdcBal, usdt: usdtBal });
+
       } catch (e) {
-        console.error("Error fetching balance:", e);
-        setUserBalance(0);
+        console.error("Error fetching balances:", e);
+        setBalances({ usdc: 0, usdt: 0 });
       } finally {
         setCheckingBalance(false);
       }
     }
 
-    checkBalance();
-  }, [publicKey, tokenType, connection]);
+    checkBalances();
+  }, [publicKey, connection]); // Removed 'tokenType' dependency so it doesn't reload on click
 
   // ---------------------------------------------------
   // 2. HANDLE BUY
@@ -69,9 +83,9 @@ export default function PresaleWidget() {
   const handleBuy = async () => {
     if (!publicKey) return;
     
-    // Safety Check: Balance
-    if (userBalance < parseFloat(usdAmount)) {
-        alert(`Insufficient funds! You only have ${userBalance.toFixed(2)} ${tokenType}.`);
+    // Safety Check: Balance using the helper variable
+    if (currentSelectedBalance < parseFloat(usdAmount)) {
+        alert(`Insufficient funds! You only have ${currentSelectedBalance.toFixed(2)} ${tokenType}.`);
         return;
     }
 
@@ -108,12 +122,11 @@ export default function PresaleWidget() {
       setStatus("Purchase Successful!");
       alert(`Success! You received ${ssfAmount} SSF tokens.`);
       
-      // Refresh balance after purchase
+      // Refresh page/balances after purchase
       window.location.reload(); 
 
     } catch (error: any) {
       console.error(error);
-      // Handle User Rejecting vs Actual Error
       if (error.message?.includes("User rejected")) {
         setStatus("Transaction cancelled.");
       } else {
@@ -129,7 +142,7 @@ export default function PresaleWidget() {
       <h2 className="text-3xl font-bold text-center mb-8 text-white">Buy SSF Tokens</h2>
 
       {/* --------------------------------------------------- */}
-      {/* IMPROVED UI: PAYMENT SELECTOR */}
+      {/* UI: PAYMENT SELECTOR */}
       {/* --------------------------------------------------- */}
       <div className="mb-6">
         <label className="text-sm text-gray-400 font-semibold mb-2 block">I want to pay with:</label>
@@ -148,9 +161,9 @@ export default function PresaleWidget() {
                     <span className="text-blue-400">USDC</span>
                     {tokenType === 'USDC' && <span className="text-blue-500">✓</span>}
                 </div>
-                {/* Show Balance */}
+                {/* FIXED: Always shows USDC balance */}
                 <div className="text-xs mt-1 text-gray-400">
-                    {checkingBalance ? "..." : `Bal: ${userBalance.toLocaleString()}`}
+                    {checkingBalance ? "..." : `Bal: ${balances.usdc.toLocaleString()}`}
                 </div>
             </div>
 
@@ -167,9 +180,9 @@ export default function PresaleWidget() {
                     <span className="text-green-400">USDT</span>
                     {tokenType === 'USDT' && <span className="text-green-500">✓</span>}
                 </div>
-                {/* Show Balance */}
+                {/* FIXED: Always shows USDT balance */}
                 <div className="text-xs mt-1 text-gray-400">
-                    {checkingBalance ? "..." : `Bal: ${userBalance.toLocaleString()}`}
+                    {checkingBalance ? "..." : `Bal: ${balances.usdt.toLocaleString()}`}
                 </div>
             </div>
 
@@ -206,9 +219,9 @@ export default function PresaleWidget() {
       ) : (
         <button 
           onClick={handleBuy} 
-          disabled={isLoading || parseFloat(usdAmount) < MIN_PURCHASE_USD || userBalance < parseFloat(usdAmount)}
+          disabled={isLoading || parseFloat(usdAmount) < MIN_PURCHASE_USD || currentSelectedBalance < parseFloat(usdAmount)}
           className={`w-full py-4 rounded-xl font-bold text-lg transition-all ${
-             userBalance < parseFloat(usdAmount)
+             currentSelectedBalance < parseFloat(usdAmount)
              ? "bg-gray-600 cursor-not-allowed opacity-50" // Insufficient Funds style
              : "bg-white text-black hover:scale-[1.02] shadow-lg" // Active style
           }`}
@@ -216,7 +229,7 @@ export default function PresaleWidget() {
           {isLoading ? (
             <span className="loading loading-spinner">Processing...</span>
           ) : (
-             userBalance < parseFloat(usdAmount) 
+             currentSelectedBalance < parseFloat(usdAmount) 
              ? `Insufficient ${tokenType} Balance` 
              : `SWAP ${usdAmount} ${tokenType}`
           )}
