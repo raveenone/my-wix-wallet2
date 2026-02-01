@@ -9,29 +9,20 @@ import {
   WalletProvider,
 } from '@solana/wallet-adapter-react'
 import { WalletModalProvider } from '@solana/wallet-adapter-react-ui'
-import { ReactNode, useCallback, useMemo } from 'react'
+import { ReactNode, useCallback, useMemo, useEffect, useState } from 'react'
 import { useCluster } from '../cluster/cluster-data-access'
 import '@solana/wallet-adapter-react-ui/styles.css'
 import { AnchorProvider } from '@coral-xyz/anchor'
 
-import { 
-    SolanaMobileWalletAdapter, 
-    createDefaultAddressSelector, 
-    createDefaultAuthorizationResultCache,
-    createDefaultWalletNotFoundHandler
-} from '@solana-mobile/wallet-adapter-mobile';
+// 1. IMPORT THE NETWORK ENUM (Fixes the error)
+import { WalletAdapterNetwork } from '@solana/wallet-adapter-base';
 
+// 2. IMPORT WALLET CONNECT & ADAPTERS
+import { WalletConnectWalletAdapter } from '@solana/wallet-adapter-walletconnect';
 import { PhantomWalletAdapter } from '@solana/wallet-adapter-phantom';
 import { SolflareWalletAdapter } from '@solana/wallet-adapter-solflare';
 
 import dynamic from 'next/dynamic'
-
-// ---------------------------------------------------------
-// IMPORTANT: PASTE YOUR VERCEL URL HERE
-// ---------------------------------------------------------
-// Do not use window.location. This must be the actual domain 
-// listed in your Vercel settings. No trailing slash.
-const REAL_VERCEL_URL = 'https://my-wix-wallet2.vercel.app'; 
 
 export const WalletButton = dynamic(async () => (await import('@solana/wallet-adapter-react-ui')).WalletMultiButton, {
   ssr: false,
@@ -44,34 +35,58 @@ export function SolanaProvider({ children }: { children: ReactNode }) {
   const onError = useCallback((error: WalletError) => {
     console.error("Wallet Error:", error);
   }, [])
+  
+  const [isMobile, setIsMobile] = useState(false);
 
-  const wallets = useMemo(
-    () => [
-      // 1. Mobile Wallet Adapter (Android Priority)
-      new SolanaMobileWalletAdapter({
-        addressSelector: createDefaultAddressSelector(),
-        appIdentity: {
-          name: 'SSF Token Sale',
-          uri: REAL_VERCEL_URL, // <--- HARDCODED URI FIXES THE IFRAME MISMATCH
-          icon: `${REAL_VERCEL_URL}/favicon.ico`,
-        },
-        authorizationResultCache: createDefaultAuthorizationResultCache(),
-        cluster: 'mainnet-beta',
-        onWalletNotFound: createDefaultWalletNotFoundHandler(),
-      }),
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+        const userAgent = navigator.userAgent || navigator.vendor || (window as any).opera;
+        const mobileCheck = /android|ipad|iphone|ipod/i.test(userAgent);
+        setIsMobile(mobileCheck);
+    }
+  }, []);
 
-      // 2. Standard Adapters (iOS / Desktop)
-      // These have their own built-in deep linking for iOS
-      new PhantomWalletAdapter(),
-      new SolflareWalletAdapter(),
-    ],
-    []
-  );
+  const wallets = useMemo(() => {
+    
+    // -----------------------------------------------------------
+    // CONFIGURATION A: MOBILE (Use WalletConnect)
+    // -----------------------------------------------------------
+    if (isMobile) {
+        return [
+            new WalletConnectWalletAdapter({
+                // 3. USE THE ENUM HERE (Fixes the error)
+                network: WalletAdapterNetwork.Mainnet, 
+                options: {
+                    // PASTE YOUR PROJECT ID HERE
+                    projectId: '06989729509399f142944d7a50716e5f', 
+                    metadata: {
+                        name: 'SSF Token Sale',
+                        description: 'Buy SSF Tokens',
+                        url: 'https://my-wix-wallet2.vercel.app', // Your Vercel URL
+                        icons: ['https://avatars.githubusercontent.com/u/37784886']
+                    },
+                },
+            }),
+            // Fallback adapters for mobile
+            new PhantomWalletAdapter(),
+            new SolflareWalletAdapter(),
+        ];
+    }
+
+    // -----------------------------------------------------------
+    // CONFIGURATION B: DESKTOP (Standard Extensions)
+    // -----------------------------------------------------------
+    return [
+        new PhantomWalletAdapter(),
+        new SolflareWalletAdapter(),
+    ];
+
+  }, [isMobile]);
 
   return (
     <ConnectionProvider endpoint={endpoint}>
-      {/* AutoConnect is safer left OFF for mobile iframes to prevent race conditions */}
-      <WalletProvider wallets={wallets} onError={onError} autoConnect={true}>
+      {/* AutoConnect OFF on mobile to allow WalletConnect to initialize cleanly */}
+      <WalletProvider wallets={wallets} onError={onError} autoConnect={!isMobile}>
         <WalletModalProvider>{children}</WalletModalProvider>
       </WalletProvider>
     </ConnectionProvider>
