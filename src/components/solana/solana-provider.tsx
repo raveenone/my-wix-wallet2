@@ -14,7 +14,14 @@ import { useCluster } from '../cluster/cluster-data-access'
 import '@solana/wallet-adapter-react-ui/styles.css'
 import { AnchorProvider } from '@coral-xyz/anchor'
 
-// IMPORTS FOR MANUAL ADAPTERS
+// 1. IMPORT MOBILE ADAPTER UTILS (Fixed Package Name)
+import { 
+    SolanaMobileWalletAdapter, 
+    createDefaultAddressSelector, 
+    createDefaultAuthorizationResultCache,
+    createDefaultWalletNotFoundHandler // <--- ADDED THIS
+} from '@solana-mobile/wallet-adapter-mobile';
+
 import { PhantomWalletAdapter } from '@solana/wallet-adapter-phantom';
 import { SolflareWalletAdapter } from '@solana/wallet-adapter-solflare';
 
@@ -31,9 +38,24 @@ export function SolanaProvider({ children }: { children: ReactNode }) {
     console.error(error)
   }, [])
 
-  // FORCE THESE WALLETS TO EXIST
+  // 2. CONFIGURE WALLETS
   const wallets = useMemo(
     () => [
+      // A. Mobile Wallet Adapter (Android Standard)
+      new SolanaMobileWalletAdapter({
+        addressSelector: createDefaultAddressSelector(),
+        appIdentity: {
+          name: 'SSF Token Sale',
+          uri: 'https://your-website-url.com', // Update with your real domain
+          icon: 'https://your-website-url.com/icon.png', // Optional icon
+        },
+        authorizationResultCache: createDefaultAuthorizationResultCache(),
+        cluster: 'mainnet-beta',
+        // B. THE MISSING HANDLER (Fixes the error)
+        onWalletNotFound: createDefaultWalletNotFoundHandler(),
+      }),
+
+      // C. Standard Adapters (Desktop/iOS Fallback)
       new PhantomWalletAdapter(),
       new SolflareWalletAdapter(),
     ],
