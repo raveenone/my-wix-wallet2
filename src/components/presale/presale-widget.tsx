@@ -23,17 +23,15 @@ export default function PresaleWidget() {
   const [status, setStatus] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   
-  // CHANGED: Store both balances separately
   const [balances, setBalances] = useState({ usdc: 0, usdt: 0 });
   const [checkingBalance, setCheckingBalance] = useState(false);
 
   const ssfAmount = parseFloat(usdAmount || "0") / PRICE_PER_TOKEN;
   
-  // Helper to get current selected balance for validation
   const currentSelectedBalance = tokenType === 'USDC' ? balances.usdc : balances.usdt;
 
   // ---------------------------------------------------
-  // 1. CHECK USER BALANCES (BOTH)
+  // 1. CHECK USER BALANCES
   // ---------------------------------------------------
   useEffect(() => {
     async function checkBalances() {
@@ -45,7 +43,6 @@ export default function PresaleWidget() {
       setCheckingBalance(true);
       
       try {
-        // Helper function to fetch a single token balance
         const fetchBalance = async (mintAddress: string) => {
             const mint = new PublicKey(mintAddress);
             const response = await connection.getParsedTokenAccountsByOwner(publicKey, { mint });
@@ -58,7 +55,6 @@ export default function PresaleWidget() {
             return 0;
         };
 
-        // Fetch BOTH at the same time
         const [usdcBal, usdtBal] = await Promise.all([
             fetchBalance(USDC_MINT_ADDRESS),
             fetchBalance(USDT_MINT_ADDRESS)
@@ -75,7 +71,7 @@ export default function PresaleWidget() {
     }
 
     checkBalances();
-  }, [publicKey, connection]); // Removed 'tokenType' dependency so it doesn't reload on click
+  }, [publicKey, connection]);
 
   // ---------------------------------------------------
   // 2. HANDLE BUY
@@ -83,7 +79,6 @@ export default function PresaleWidget() {
   const handleBuy = async () => {
     if (!publicKey) return;
     
-    // Safety Check: Balance using the helper variable
     if (currentSelectedBalance < parseFloat(usdAmount)) {
         alert(`Insufficient funds! You only have ${currentSelectedBalance.toFixed(2)} ${tokenType}.`);
         return;
@@ -93,7 +88,6 @@ export default function PresaleWidget() {
     setStatus("Generating transaction...");
 
     try {
-      // Call API
       const response = await fetch('/api/create-transaction', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -107,11 +101,9 @@ export default function PresaleWidget() {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Failed to create transaction");
 
-      // Deserialize
       const transactionBuffer = Buffer.from(data.transaction, 'base64');
       const transaction = Transaction.from(transactionBuffer);
 
-      // Sign and Send
       setStatus(`Please approve the ${tokenType} transfer in your wallet...`);
       
       const signature = await sendTransaction(transaction, connection);
@@ -122,7 +114,6 @@ export default function PresaleWidget() {
       setStatus("Purchase Successful!");
       alert(`Success! You received ${ssfAmount} SSF tokens.`);
       
-      // Refresh page/balances after purchase
       window.location.reload(); 
 
     } catch (error: any) {
@@ -139,7 +130,24 @@ export default function PresaleWidget() {
 
   return (
     <div className="w-full max-w-md mx-auto p-6 bg-[#0f0f0f] text-white rounded-3xl border border-gray-800 shadow-2xl">
-      <h2 className="text-3xl font-bold text-center mb-8 text-white">Buy SSF Tokens</h2>
+      
+      {/* --------------------------------------------------- */}
+      {/* NEW HEADER: TITLE + WALLET BUTTON */}
+      {/* --------------------------------------------------- */}
+      <div className="flex flex-col sm:flex-row justify-between items-center mb-8 gap-4">
+        <h2 className="text-2xl font-bold text-white">Buy SSF Tokens</h2>
+        
+        {/* This button is now ALWAYS visible. 
+            When connected, it shows the address and allows Disconnect. */}
+        <div className="transform scale-90 origin-right">
+             <WalletMultiButton style={{ 
+                 height: '40px', 
+                 backgroundColor: '#333',
+                 fontSize: '14px',
+                 padding: '0 16px' 
+             }} />
+        </div>
+      </div>
 
       {/* --------------------------------------------------- */}
       {/* UI: PAYMENT SELECTOR */}
@@ -148,7 +156,7 @@ export default function PresaleWidget() {
         <label className="text-sm text-gray-400 font-semibold mb-2 block">I want to pay with:</label>
         <div className="grid grid-cols-2 gap-4">
             
-            {/* USDC OPTION */}
+            {/* USDC */}
             <div 
                 onClick={() => setTokenType('USDC')}
                 className={`cursor-pointer rounded-xl p-4 border-2 flex flex-col items-center transition-all ${
@@ -161,13 +169,12 @@ export default function PresaleWidget() {
                     <span className="text-blue-400">USDC</span>
                     {tokenType === 'USDC' && <span className="text-blue-500">✓</span>}
                 </div>
-                {/* FIXED: Always shows USDC balance */}
                 <div className="text-xs mt-1 text-gray-400">
                     {checkingBalance ? "..." : `Bal: ${balances.usdc.toLocaleString()}`}
                 </div>
             </div>
 
-            {/* USDT OPTION */}
+            {/* USDT */}
             <div 
                 onClick={() => setTokenType('USDT')}
                 className={`cursor-pointer rounded-xl p-4 border-2 flex flex-col items-center transition-all ${
@@ -180,7 +187,6 @@ export default function PresaleWidget() {
                     <span className="text-green-400">USDT</span>
                     {tokenType === 'USDT' && <span className="text-green-500">✓</span>}
                 </div>
-                {/* FIXED: Always shows USDT balance */}
                 <div className="text-xs mt-1 text-gray-400">
                     {checkingBalance ? "..." : `Bal: ${balances.usdt.toLocaleString()}`}
                 </div>
@@ -213,17 +219,21 @@ export default function PresaleWidget() {
 
       {/* ACTION BUTTON */}
       {!publicKey ? (
-         <div className="flex justify-center wallet-adapter-button-trigger">
-            <WalletMultiButton />
-         </div>
+         // If disconnected, show a disabled button telling them to look up
+         <button 
+            className="w-full py-4 rounded-xl font-bold text-lg bg-gray-700 text-gray-400 cursor-not-allowed"
+            disabled
+         >
+            Connect Wallet to Buy
+         </button>
       ) : (
         <button 
           onClick={handleBuy} 
           disabled={isLoading || parseFloat(usdAmount) < MIN_PURCHASE_USD || currentSelectedBalance < parseFloat(usdAmount)}
           className={`w-full py-4 rounded-xl font-bold text-lg transition-all ${
              currentSelectedBalance < parseFloat(usdAmount)
-             ? "bg-gray-600 cursor-not-allowed opacity-50" // Insufficient Funds style
-             : "bg-white text-black hover:scale-[1.02] shadow-lg" // Active style
+             ? "bg-gray-600 cursor-not-allowed opacity-50" 
+             : "bg-white text-black hover:scale-[1.02] shadow-lg"
           }`}
         >
           {isLoading ? (
