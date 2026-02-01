@@ -34,33 +34,37 @@ export const WalletButton = dynamic(async () => (await import('@solana/wallet-ad
 export function SolanaProvider({ children }: { children: ReactNode }) {
   const { cluster } = useCluster()
   const endpoint = useMemo(() => cluster.endpoint, [cluster])
+  
+  // ERROR HANDLER: Helps debug "Does nothing" issues
   const onError = useCallback((error: WalletError) => {
-    console.error(error)
+    console.error("Wallet Error:", error);
+    // Optional: Alert the user if it's a critical connection error
+    if (error.name === 'WalletConnectionError') {
+        alert("Connection failed. Please try again or open this site in your Wallet's built-in browser.");
+    }
   }, [])
   
   const [currentUri, setCurrentUri] = useState<string>('');
   const [isMobile, setIsMobile] = useState(false);
 
-  // 1. DETECT DEVICE TYPE ON LOAD
+  // 1. DETECT DEVICE TYPE
   useEffect(() => {
     if (typeof window !== 'undefined') {
         setCurrentUri(window.location.origin);
         
-        // Simple mobile detection check
         const userAgent = navigator.userAgent || navigator.vendor || (window as any).opera;
         const mobileCheck = /android|ipad|iphone|ipod/i.test(userAgent);
         setIsMobile(mobileCheck);
     }
   }, []);
 
-  // 2. CONFIGURE WALLETS BASED ON DEVICE
+  // 2. CONFIGURE WALLETS
   const wallets = useMemo(() => {
     
     // CONFIG A: MOBILE DEVICES
-    // We REMOVE the standard adapters to prevent the "Get App" popup conflicts.
-    // We ONLY use the Mobile Adapter, which handles app switching correctly.
     if (isMobile) {
         return [
+            // 1. Mobile Wallet Adapter (First Priority for Android Chrome)
             new SolanaMobileWalletAdapter({
                 addressSelector: createDefaultAddressSelector(),
                 appIdentity: {
@@ -72,11 +76,14 @@ export function SolanaProvider({ children }: { children: ReactNode }) {
                 cluster: 'mainnet-beta',
                 onWalletNotFound: createDefaultWalletNotFoundHandler(),
             }),
+            // 2. Standard Adapters (Backup & In-App Browser Support)
+            // If user is in Solflare App Browser, these work better than MWA.
+            new PhantomWalletAdapter(),
+            new SolflareWalletAdapter(),
         ];
     }
 
     // CONFIG B: DESKTOP
-    // On desktop, we want the browser extensions.
     return [
         new PhantomWalletAdapter(),
         new SolflareWalletAdapter(),
@@ -86,7 +93,8 @@ export function SolanaProvider({ children }: { children: ReactNode }) {
 
   return (
     <ConnectionProvider endpoint={endpoint}>
-      <WalletProvider wallets={wallets} onError={onError} autoConnect={true}>
+      {/* DISABLE AUTO CONNECT ON MOBILE to prevent "Stuck" state */}
+      <WalletProvider wallets={wallets} onError={onError} autoConnect={!isMobile}>
         <WalletModalProvider>{children}</WalletModalProvider>
       </WalletProvider>
     </ConnectionProvider>

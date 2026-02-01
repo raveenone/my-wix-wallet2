@@ -275,6 +275,20 @@ export default function PresaleWidget() {
         }
         input { position: relative; z-index: 20; }
       `}</style>
+
+      {/* MOBILE ESCAPE HATCH */}
+      {/* Only shows on mobile screens. Helps users break out of Wix Iframe issues. */}
+      <div className="mt-8 text-center sm:hidden">
+        <p className="text-xs text-gray-500 mb-2">Having trouble connecting?</p>
+        <a 
+          href={typeof window !== 'undefined' ? window.location.href : '#'} 
+          target="_blank" 
+          rel="noopener noreferrer"
+          className="text-xs text-blue-400 underline"
+        >
+          Open in Full Screen
+        </a>
+      </div>
     </div>
   );
 }
