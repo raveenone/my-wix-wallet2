@@ -38,40 +38,51 @@ export function SolanaProvider({ children }: { children: ReactNode }) {
     console.error(error)
   }, [])
   
-  // Use state to handle window object safely (Server Side Rendering fix)
-  const [currentUri, setCurrentUri] = useState<string>('https://your-website.com');
-  
+  const [currentUri, setCurrentUri] = useState<string>('');
+  const [isMobile, setIsMobile] = useState(false);
+
+  // 1. DETECT DEVICE TYPE ON LOAD
   useEffect(() => {
     if (typeof window !== 'undefined') {
         setCurrentUri(window.location.origin);
+        
+        // Simple mobile detection check
+        const userAgent = navigator.userAgent || navigator.vendor || (window as any).opera;
+        const mobileCheck = /android|ipad|iphone|ipod/i.test(userAgent);
+        setIsMobile(mobileCheck);
     }
   }, []);
 
-  // CONFIGURE WALLETS
-  const wallets = useMemo(
-    () => [
-      
-      // 2. Mobile Wallet Adapter (Fallback for Chrome/Safari on Mobile)
-      // This allows app switching if the above don't find the wallet in-browser.
-      new SolanaMobileWalletAdapter({
-        addressSelector: createDefaultAddressSelector(),
-        appIdentity: {
-          name: 'SSF Token Sale',
-          uri: currentUri, // DYNAMIC: Matches your Vercel URL exactly
-          icon: `${currentUri}/favicon.ico`, 
-        },
-        authorizationResultCache: createDefaultAuthorizationResultCache(),
-        cluster: 'mainnet-beta',
-        onWalletNotFound: createDefaultWalletNotFoundHandler(),
-      }),
+  // 2. CONFIGURE WALLETS BASED ON DEVICE
+  const wallets = useMemo(() => {
+    
+    // CONFIG A: MOBILE DEVICES
+    // We REMOVE the standard adapters to prevent the "Get App" popup conflicts.
+    // We ONLY use the Mobile Adapter, which handles app switching correctly.
+    if (isMobile) {
+        return [
+            new SolanaMobileWalletAdapter({
+                addressSelector: createDefaultAddressSelector(),
+                appIdentity: {
+                    name: 'SSF Token Sale',
+                    uri: currentUri, 
+                    icon: `${currentUri}/favicon.ico`, 
+                },
+                authorizationResultCache: createDefaultAuthorizationResultCache(),
+                cluster: 'mainnet-beta',
+                onWalletNotFound: createDefaultWalletNotFoundHandler(),
+            }),
+        ];
+    }
 
-      // 1. Standard Adapters (First priority for In-App Browsers & Desktop)
-      // If user is in Solflare App Browser, this works instantly.
-      new PhantomWalletAdapter(),
-      new SolflareWalletAdapter(),
-    ],
-    [currentUri]
-  );
+    // CONFIG B: DESKTOP
+    // On desktop, we want the browser extensions.
+    return [
+        new PhantomWalletAdapter(),
+        new SolflareWalletAdapter(),
+    ];
+
+  }, [isMobile, currentUri]);
 
   return (
     <ConnectionProvider endpoint={endpoint}>
