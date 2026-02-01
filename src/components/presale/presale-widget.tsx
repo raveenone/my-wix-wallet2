@@ -1,6 +1,7 @@
 'use client';
 
 import { useConnection, useWallet } from '@solana/wallet-adapter-react';
+import { useWalletModal } from '@solana/wallet-adapter-react-ui'; 
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 import { PublicKey, Transaction } from '@solana/web3.js';
 import { useState, useEffect } from 'react';
@@ -17,6 +18,7 @@ const USDT_MINT_ADDRESS = "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB";
 export default function PresaleWidget() {
   const { connection } = useConnection();
   const { publicKey, sendTransaction } = useWallet();
+  const { setVisible } = useWalletModal();
 
   const [usdAmount, setUsdAmount] = useState<string>("100");
   const [tokenType, setTokenType] = useState<'USDC' | 'USDT'>('USDC');
@@ -27,7 +29,6 @@ export default function PresaleWidget() {
   const [checkingBalance, setCheckingBalance] = useState(false);
 
   const ssfAmount = parseFloat(usdAmount || "0") / PRICE_PER_TOKEN;
-  
   const currentSelectedBalance = tokenType === 'USDC' ? balances.usdc : balances.usdt;
 
   // ---------------------------------------------------
@@ -74,16 +75,22 @@ export default function PresaleWidget() {
   }, [publicKey, connection]);
 
   // ---------------------------------------------------
-  // 2. HANDLE BUY
+  // 2. HANDLE BUY OR CONNECT
   // ---------------------------------------------------
-  const handleBuy = async () => {
-    if (!publicKey) return;
-    
+  const handleAction = async () => {
+    // A. IF NOT CONNECTED -> OPEN WALLET MODAL
+    if (!publicKey) {
+        setVisible(true);
+        return;
+    }
+
+    // B. IF CONNECTED BUT LOW BALANCE -> STOP
     if (currentSelectedBalance < parseFloat(usdAmount)) {
         alert(`Insufficient funds! You only have ${currentSelectedBalance.toFixed(2)} ${tokenType}.`);
         return;
     }
 
+    // C. BUY LOGIC
     setIsLoading(true);
     setStatus("Generating transaction...");
 
@@ -128,23 +135,30 @@ export default function PresaleWidget() {
     }
   };
 
+  // ---------------------------------------------------
+  // 3. DETERMINE BUTTON STATE (FIXED TYPES)
+  // ---------------------------------------------------
+  // We use !!publicKey to force a boolean result (false instead of null)
+  const isInsufficientBalance = !!publicKey && !checkingBalance && (currentSelectedBalance < parseFloat(usdAmount));
+  const isButtonDisabled = isLoading || (!!publicKey && parseFloat(usdAmount) < MIN_PURCHASE_USD);
+
   return (
-    <div className="w-full max-w-md mx-auto p-6 bg-[#0f0f0f] text-white rounded-3xl border border-gray-800 shadow-2xl">
+    <div className="w-full max-w-md mx-auto p-6 bg-[#0f0f0f] text-white rounded-3xl border border-gray-800 shadow-2xl relative">
       
       {/* --------------------------------------------------- */}
-      {/* NEW HEADER: TITLE + WALLET BUTTON */}
+      {/* HEADER: TITLE + WALLET BUTTON */}
       {/* --------------------------------------------------- */}
-      <div className="flex flex-col sm:flex-row justify-between items-center mb-8 gap-4">
+      <div className="flex flex-col sm:flex-row justify-between items-center mb-8 gap-4 z-50 relative">
         <h2 className="text-2xl font-bold text-white">Buy SSF Tokens</h2>
         
-        {/* This button is now ALWAYS visible. 
-            When connected, it shows the address and allows Disconnect. */}
-        <div className="transform scale-90 origin-right">
+        {/* Top Right Wallet Button */}
+        <div className="transform scale-90 origin-right relative z-50">
              <WalletMultiButton style={{ 
                  height: '40px', 
                  backgroundColor: '#333',
                  fontSize: '14px',
-                 padding: '0 16px' 
+                 padding: '0 16px',
+                 zIndex: 50
              }} />
         </div>
       </div>
@@ -152,7 +166,7 @@ export default function PresaleWidget() {
       {/* --------------------------------------------------- */}
       {/* UI: PAYMENT SELECTOR */}
       {/* --------------------------------------------------- */}
-      <div className="mb-6">
+      <div className="mb-6 relative z-10">
         <label className="text-sm text-gray-400 font-semibold mb-2 block">I want to pay with:</label>
         <div className="grid grid-cols-2 gap-4">
             
@@ -196,7 +210,7 @@ export default function PresaleWidget() {
       </div>
 
       {/* AMOUNT INPUT */}
-      <div className="mb-6">
+      <div className="mb-6 relative z-10">
         <label className="text-sm text-gray-400 font-semibold mb-2 block">Amount (USD)</label>
         <div className="relative">
           <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-lg">$</span>
@@ -211,44 +225,38 @@ export default function PresaleWidget() {
       </div>
 
       {/* CONVERSION DISPLAY */}
-      <div className="bg-gray-800/50 p-6 rounded-2xl mb-8 text-center border border-gray-700">
+      <div className="bg-gray-800/50 p-6 rounded-2xl mb-8 text-center border border-gray-700 relative z-10">
         <p className="text-sm text-gray-400 mb-1">You Will Receive</p>
         <p className="text-4xl font-bold text-[#14F195] drop-shadow-md">{ssfAmount.toLocaleString()} SSF</p>
         <p className="text-xs text-gray-500 mt-2">Exchange Rate: $0.25 USD = 1 SSF</p>
       </div>
 
-      {/* ACTION BUTTON */}
-      {!publicKey ? (
-         // If disconnected, show a disabled button telling them to look up
-         <button 
-            className="w-full py-4 rounded-xl font-bold text-lg bg-gray-700 text-gray-400 cursor-not-allowed"
-            disabled
-         >
-            Connect Wallet to Buy
-         </button>
-      ) : (
-        <button 
-          onClick={handleBuy} 
-          disabled={isLoading || parseFloat(usdAmount) < MIN_PURCHASE_USD || currentSelectedBalance < parseFloat(usdAmount)}
-          className={`w-full py-4 rounded-xl font-bold text-lg transition-all ${
-             currentSelectedBalance < parseFloat(usdAmount)
-             ? "bg-gray-600 cursor-not-allowed opacity-50" 
-             : "bg-white text-black hover:scale-[1.02] shadow-lg"
-          }`}
-        >
-          {isLoading ? (
+      {/* --------------------------------------------------- */}
+      {/* BOTTOM ACTION BUTTON */}
+      {/* --------------------------------------------------- */}
+      <button 
+        onClick={handleAction} 
+        disabled={isButtonDisabled || isInsufficientBalance}
+        className={`w-full py-4 rounded-xl font-bold text-lg transition-all relative z-10 ${
+            !publicKey 
+             ? "bg-blue-600 hover:bg-blue-500 text-white shadow-lg" // Connect Wallet Style
+             : isInsufficientBalance 
+                ? "bg-gray-700 text-gray-400 cursor-not-allowed"   // No Money Style
+                : "bg-white text-black hover:scale-[1.02] shadow-lg" // Buy Style
+        }`}
+      >
+        {isLoading ? (
             <span className="loading loading-spinner">Processing...</span>
-          ) : (
-             currentSelectedBalance < parseFloat(usdAmount) 
-             ? `Insufficient ${tokenType} Balance` 
-             : `SWAP ${usdAmount} ${tokenType}`
-          )}
-        </button>
-      )}
+        ) : (
+            !publicKey ? "Connect Wallet to Buy" :
+            isInsufficientBalance ? `Insufficient ${tokenType} Balance` :
+            `SWAP ${usdAmount} ${tokenType}`
+        )}
+      </button>
 
       {/* STATUS MESSAGE */}
       {status && (
-        <div className={`mt-6 text-center text-sm p-3 rounded-lg border ${
+        <div className={`mt-6 text-center text-sm p-3 rounded-lg border relative z-10 ${
             status.includes("Error") || status.includes("cancelled") 
             ? "bg-red-900/30 border-red-800 text-red-300" 
             : "bg-green-900/30 border-green-800 text-green-300"
@@ -256,6 +264,17 @@ export default function PresaleWidget() {
           {status}
         </div>
       )}
+
+      {/* GLOBAL CSS OVERRIDES FOR MODALS */}
+      <style jsx global>{`
+        .wallet-adapter-dropdown {
+            z-index: 99999 !important;
+        }
+        .wallet-adapter-dropdown-list {
+            z-index: 99999 !important;
+        }
+        input { position: relative; z-index: 20; }
+      `}</style>
     </div>
   );
 }
