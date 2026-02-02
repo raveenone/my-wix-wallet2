@@ -14,15 +14,23 @@ import { useCluster } from '../cluster/cluster-data-access'
 import '@solana/wallet-adapter-react-ui/styles.css'
 import { AnchorProvider } from '@coral-xyz/anchor'
 
-// 1. IMPORT THE NETWORK ENUM (Fixes the error)
-import { WalletAdapterNetwork } from '@solana/wallet-adapter-base';
+// 1. IMPORT MOBILE ADAPTER (Standard Android/Mobile Protocol)
+import { 
+    SolanaMobileWalletAdapter, 
+    createDefaultAddressSelector, 
+    createDefaultAuthorizationResultCache,
+    createDefaultWalletNotFoundHandler
+} from '@solana-mobile/wallet-adapter-mobile';
 
-// 2. IMPORT WALLET CONNECT & ADAPTERS
-import { WalletConnectWalletAdapter } from '@solana/wallet-adapter-walletconnect';
 import { PhantomWalletAdapter } from '@solana/wallet-adapter-phantom';
 import { SolflareWalletAdapter } from '@solana/wallet-adapter-solflare';
 
 import dynamic from 'next/dynamic'
+
+// ---------------------------------------------------------
+// IMPORTANT: YOUR VERCEL URL
+// ---------------------------------------------------------
+const REAL_VERCEL_URL = 'https://my-wix-wallet2.vercel.app'; 
 
 export const WalletButton = dynamic(async () => (await import('@solana/wallet-adapter-react-ui')).WalletMultiButton, {
   ssr: false,
@@ -38,6 +46,7 @@ export function SolanaProvider({ children }: { children: ReactNode }) {
   
   const [isMobile, setIsMobile] = useState(false);
 
+  // DETECT DEVICE
   useEffect(() => {
     if (typeof window !== 'undefined') {
         const userAgent = navigator.userAgent || navigator.vendor || (window as any).opera;
@@ -49,32 +58,31 @@ export function SolanaProvider({ children }: { children: ReactNode }) {
   const wallets = useMemo(() => {
     
     // -----------------------------------------------------------
-    // CONFIGURATION A: MOBILE (Use WalletConnect)
+    // CONFIGURATION A: MOBILE
     // -----------------------------------------------------------
     if (isMobile) {
         return [
-            new WalletConnectWalletAdapter({
-                // 3. USE THE ENUM HERE (Fixes the error)
-                network: WalletAdapterNetwork.Mainnet, 
-                options: {
-                    // PASTE YOUR PROJECT ID HERE
-                    projectId: '06989729509399f142944d7a50716e5f', 
-                    metadata: {
-                        name: 'SSF Token Sale',
-                        description: 'Buy SSF Tokens',
-                        url: 'https://my-wix-wallet2.vercel.app', // Your Vercel URL
-                        icons: ['https://avatars.githubusercontent.com/u/37784886']
-                    },
+            // 1. Mobile Wallet Adapter (The "Connect" button for Android/Mobile)
+            new SolanaMobileWalletAdapter({
+                addressSelector: createDefaultAddressSelector(),
+                appIdentity: {
+                    name: 'SSF Token Sale',
+                    uri: REAL_VERCEL_URL, // Critical for Wix Iframe support
+                    icon: `${REAL_VERCEL_URL}/favicon.ico`,
                 },
+                authorizationResultCache: createDefaultAuthorizationResultCache(),
+                cluster: 'mainnet-beta',
+                onWalletNotFound: createDefaultWalletNotFoundHandler(),
             }),
-            // Fallback adapters for mobile
+            
+            // 2. Standard Adapters (For In-App Browsers)
             new PhantomWalletAdapter(),
             new SolflareWalletAdapter(),
         ];
     }
 
     // -----------------------------------------------------------
-    // CONFIGURATION B: DESKTOP (Standard Extensions)
+    // CONFIGURATION B: DESKTOP
     // -----------------------------------------------------------
     return [
         new PhantomWalletAdapter(),
@@ -85,7 +93,7 @@ export function SolanaProvider({ children }: { children: ReactNode }) {
 
   return (
     <ConnectionProvider endpoint={endpoint}>
-      {/* AutoConnect OFF on mobile to allow WalletConnect to initialize cleanly */}
+      {/* AutoConnect OFF on mobile to prevent "Stuck" button state */}
       <WalletProvider wallets={wallets} onError={onError} autoConnect={!isMobile}>
         <WalletModalProvider>{children}</WalletModalProvider>
       </WalletProvider>
