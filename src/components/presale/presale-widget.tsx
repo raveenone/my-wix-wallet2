@@ -31,14 +31,6 @@ export default function PresaleWidget() {
   const ssfAmount = parseFloat(usdAmount || "0") / PRICE_PER_TOKEN;
   const currentSelectedBalance = tokenType === 'USDC' ? balances.usdc : balances.usdt;
 
-  const isMobile =
-    typeof window !== 'undefined' &&
-    /android|iphone|ipad|ipod/i.test(navigator.userAgent);
-
-  const isEmbedded =
-    typeof window !== 'undefined' &&
-    window.self !== window.top;
-
   // ---------------------------------------------------
   // 1. CHECK USER BALANCES
   // ---------------------------------------------------
@@ -87,25 +79,10 @@ export default function PresaleWidget() {
   // ---------------------------------------------------
   const handleAction = async () => {
     // A. IF NOT CONNECTED -> OPEN WALLET MODAL
-    
     if (!publicKey) {
-
-      // MOBILE + IFRAME → ESCAPE FIRST
-      if (isMobile && isEmbedded) {
-        window.top!.location.href =
-          `${window.location.origin}/buy?mode=fullscreen`;
-        return;
-      }
-
-      // DESKTOP OR FULLSCREEN
-      setVisible(true);
-      return;
-    }
-    
-    /*if (!publicKey) {
         setVisible(true);
         return;
-    }*/
+    }
 
     // B. IF CONNECTED BUT LOW BALANCE -> STOP
     if (currentSelectedBalance < parseFloat(usdAmount)) {
@@ -176,7 +153,6 @@ export default function PresaleWidget() {
         
         {/* Top Right Wallet Button */}
         <div className="transform scale-90 origin-right relative z-50">
-             {!(isMobile && isEmbedded) && (
              <WalletMultiButton style={{ 
                  height: '40px', 
                  backgroundColor: '#333',
@@ -184,7 +160,6 @@ export default function PresaleWidget() {
                  padding: '0 16px',
                  zIndex: 50
              }} />
-             )}
         </div>
       </div>
 
