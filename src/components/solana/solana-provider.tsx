@@ -14,23 +14,28 @@ import { useCluster } from '../cluster/cluster-data-access'
 import '@solana/wallet-adapter-react-ui/styles.css'
 import { AnchorProvider } from '@coral-xyz/anchor'
 
-// 1. IMPORT MOBILE ADAPTER (Standard Android/Mobile Protocol)
+// 1. IMPORT ALL ADAPTERS
 import { 
     SolanaMobileWalletAdapter, 
     createDefaultAddressSelector, 
     createDefaultAuthorizationResultCache,
     createDefaultWalletNotFoundHandler
 } from '@solana-mobile/wallet-adapter-mobile';
-
+import { WalletAdapterNetwork } from '@solana/wallet-adapter-base';
+import { WalletConnectWalletAdapter } from '@solana/wallet-adapter-walletconnect';
 import { PhantomWalletAdapter } from '@solana/wallet-adapter-phantom';
 import { SolflareWalletAdapter } from '@solana/wallet-adapter-solflare';
 
 import dynamic from 'next/dynamic'
 
 // ---------------------------------------------------------
-// IMPORTANT: YOUR VERCEL URL
+// CONFIGURATION
 // ---------------------------------------------------------
+// 1. YOUR VERCEL URL (No trailing slash)
 const REAL_VERCEL_URL = 'https://my-wix-wallet2.vercel.app'; 
+
+// 2. YOUR PROJECT ID (From Reown/WalletConnect Cloud)
+const PROJECT_ID = 'YOUR_PROJECT_ID_HERE'; 
 
 export const WalletButton = dynamic(async () => (await import('@solana/wallet-adapter-react-ui')).WalletMultiButton, {
   ssr: false,
@@ -58,31 +63,45 @@ export function SolanaProvider({ children }: { children: ReactNode }) {
   const wallets = useMemo(() => {
     
     // -----------------------------------------------------------
-    // CONFIGURATION A: MOBILE
+    // MOBILE CONFIGURATION (Hybrid)
     // -----------------------------------------------------------
     if (isMobile) {
         return [
-            // 1. Mobile Wallet Adapter (The "Connect" button for Android/Mobile)
+            // A. Native Mobile Adapter (Android Intents)
             new SolanaMobileWalletAdapter({
                 addressSelector: createDefaultAddressSelector(),
                 appIdentity: {
                     name: 'SSF Token Sale',
-                    uri: REAL_VERCEL_URL, // Critical for Wix Iframe support
+                    uri: REAL_VERCEL_URL, // Wix Iframe Fix
                     icon: `${REAL_VERCEL_URL}/favicon.ico`,
                 },
                 authorizationResultCache: createDefaultAuthorizationResultCache(),
                 cluster: 'mainnet-beta',
                 onWalletNotFound: createDefaultWalletNotFoundHandler(),
             }),
-            
-            // 2. Standard Adapters (For In-App Browsers)
+
+            // B. WalletConnect (The "Safety Net" with Project ID)
+            new WalletConnectWalletAdapter({
+                network: WalletAdapterNetwork.Mainnet,
+                options: {
+                    projectId: PROJECT_ID, 
+                    metadata: {
+                        name: 'SSF Token Sale',
+                        description: 'Buy SSF Tokens',
+                        url: REAL_VERCEL_URL,
+                        icons: [`${REAL_VERCEL_URL}/favicon.ico`]
+                    },
+                },
+            }),
+
+            // C. Standard Adapters (In-App Browser Support)
             new PhantomWalletAdapter(),
             new SolflareWalletAdapter(),
         ];
     }
 
     // -----------------------------------------------------------
-    // CONFIGURATION B: DESKTOP
+    // DESKTOP CONFIGURATION
     // -----------------------------------------------------------
     return [
         new PhantomWalletAdapter(),
@@ -93,7 +112,7 @@ export function SolanaProvider({ children }: { children: ReactNode }) {
 
   return (
     <ConnectionProvider endpoint={endpoint}>
-      {/* AutoConnect OFF on mobile to prevent "Stuck" button state */}
+      {/* AutoConnect OFF on mobile to prevent "Does nothing" bugs */}
       <WalletProvider wallets={wallets} onError={onError} autoConnect={!isMobile}>
         <WalletModalProvider>{children}</WalletModalProvider>
       </WalletProvider>
