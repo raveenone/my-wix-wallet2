@@ -35,7 +35,7 @@ import dynamic from 'next/dynamic'
 const REAL_VERCEL_URL = 'https://my-wix-wallet2.vercel.app'; 
 
 // 2. YOUR PROJECT ID (From Reown/WalletConnect Cloud)
-const PROJECT_ID = 'YOUR_PROJECT_ID_HERE'; 
+const PROJECT_ID = '06989729509399f142944d7a50716e5f'; 
 
 export const WalletButton = dynamic(async () => (await import('@solana/wallet-adapter-react-ui')).WalletMultiButton, {
   ssr: false,
