@@ -51,6 +51,14 @@ export function SolanaProvider({ children }: { children: ReactNode }) {
   
   const [isMobile, setIsMobile] = useState(false);
 
+  const isEmbedded = typeof window !== 'undefined'
+  ? window.self !== window.top
+  : false;
+
+const isFullscreen =
+  typeof window !== 'undefined' &&
+  new URLSearchParams(window.location.search).get('mode') === 'fullscreen';
+
   // DETECT DEVICE
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -60,7 +68,7 @@ export function SolanaProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const wallets = useMemo(() => {
+  /*const wallets = useMemo(() => {
     
     // -----------------------------------------------------------
     // MOBILE CONFIGURATION (Hybrid)
@@ -108,12 +116,70 @@ export function SolanaProvider({ children }: { children: ReactNode }) {
         new SolflareWalletAdapter(),
     ];
 
-  }, [isMobile]);
+  }, [isMobile]);*/
+
+  const wallets = useMemo(() => {
+
+    // -----------------------------------------------------------
+    // DESKTOP (Iframe-safe)
+    // -----------------------------------------------------------
+    if (!isMobile) {
+      return [
+        new PhantomWalletAdapter(),
+        new SolflareWalletAdapter(),
+      ];
+    }
+
+    // -----------------------------------------------------------
+    // MOBILE + IFRAME → NO WALLETS (UI only)
+    // -----------------------------------------------------------
+    if (isMobile && isEmbedded && !isFullscreen) {
+      return [];
+    }
+
+    // -----------------------------------------------------------
+    // MOBILE + FULLSCREEN → ENABLE MOBILE WALLETS
+    // -----------------------------------------------------------
+    if (isMobile && isFullscreen) {
+      return [
+        new SolanaMobileWalletAdapter({
+          addressSelector: createDefaultAddressSelector(),
+          appIdentity: {
+            name: 'SSF Token Sale',
+            uri: REAL_VERCEL_URL,
+            icon: `${REAL_VERCEL_URL}/favicon.ico`,
+          },
+          authorizationResultCache: createDefaultAuthorizationResultCache(),
+          cluster: 'mainnet-beta',
+          onWalletNotFound: createDefaultWalletNotFoundHandler(),
+        }),
+
+        new WalletConnectWalletAdapter({
+          network: WalletAdapterNetwork.Mainnet,
+          options: {
+            projectId: PROJECT_ID,
+            metadata: {
+              name: 'SSF Token Sale',
+              description: 'Buy SSF Tokens',
+              url: REAL_VERCEL_URL,
+              icons: [`${REAL_VERCEL_URL}/favicon.ico`],
+            },
+          },
+        }),
+
+        // in-app browser fallback
+        new PhantomWalletAdapter(),
+        new SolflareWalletAdapter(),
+      ];
+    }
+
+    return [];
+  }, [isMobile, isEmbedded, isFullscreen]);
 
   return (
     <ConnectionProvider endpoint={endpoint}>
       {/* AutoConnect OFF on mobile to prevent "Does nothing" bugs */}
-      <WalletProvider wallets={wallets} onError={onError} autoConnect={!isMobile}>
+      <WalletProvider wallets={wallets} onError={onError} autoConnect={!isMobile || isFullscreen}>
         <WalletModalProvider>{children}</WalletModalProvider>
       </WalletProvider>
     </ConnectionProvider>
